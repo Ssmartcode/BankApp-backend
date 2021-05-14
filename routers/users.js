@@ -8,7 +8,8 @@ router.get("/", (req, res, next) => {
 });
 
 // CONTROLLERS
-const { newUser } = require("../controllers/users-controller");
+const { newUser, login } = require("../controllers/users-controller");
 
-router.post("/", newUser);
+router.post("/signup", newUser);
+router.post("/login", login);
 module.exports = router;

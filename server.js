@@ -8,6 +8,7 @@ const app = express();
 
 // body-parser
 app.use(express.json({ useNewUrlParser: true }));
+
 // db connection
 const DB_STRING = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.zapps.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`;
 mongoose.connect(DB_STRING, {
@@ -34,9 +35,11 @@ app.use((err, req, res, next) => {
   if (res.headerSent) {
     return next(err);
   }
-  res.json(
-    { message: err.message } || "Something went wrong. Please try again later"
-  );
+  res
+    .status(err.code)
+    .json(
+      { message: err.message } || "Something went wrong. Please try again later"
+    );
 });
 app.listen(process.env.PORT, () =>
   console.log("You have been connected on port" + process.env.PORT)
