@@ -1,6 +1,8 @@
+const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 // MODELS
 const User = require("../models/users");
-const jwt = require("jsonwebtoken");
+const Account = require("../models/accounts");
 
 // ---CREATE A NEW USER---
 const newUser = async (req, res, next) => {
@@ -11,12 +13,12 @@ const newUser = async (req, res, next) => {
   try {
     existingUser = await User.findOne({ userName });
   } catch (err) {
-    const error = new Error("Something went wrong. Please try again later");
+    const error = new Error("Ceva nu a mers. Te rog incearca mai tarziu");
     error.code = 500;
     next(error);
   }
   if (existingUser) {
-    const error = new Error("This User name is taken. Please try another one");
+    const error = new Error("Un utilizator cu acest nume exista deja.");
     error.code = 401;
     return next(error);
   }
@@ -27,19 +29,20 @@ const newUser = async (req, res, next) => {
     userEmail,
     userAge,
     userPassword,
+    userAccountsLimit: 5,
     isInitialized: false,
   });
   try {
     await newUser.save();
   } catch (err) {
-    const error = new Error("Could not create the user. Please try again");
+    const error = new Error("Contul nu a putut fi creat. Incearca mai tarziu!");
     error.code = 500;
     return next(error);
   }
 
   return res
     .status(201)
-    .json({ message: "User has been successfuly created", newUser });
+    .json({ message: "Contul a fost creat cu succes!", newUser });
 };
 
 // ---LOGIN AN EXISTING USER---
@@ -51,14 +54,14 @@ const login = async (req, res, next) => {
   try {
     existingUser = await User.findOne({ userName });
   } catch (err) {
-    const error = new Error("Something went wrong. Please try again later");
+    const error = new Error("Ceva nu a mers. Te rog incearca mai tarziu");
     error.code = 500;
     return next(error);
   }
 
   // in case the user is not in the data base
   if (!existingUser) {
-    const error = new Error("Wrong credentials. Try again");
+    const error = new Error("Credentialele introduse sunt incorecte");
     error.code = 401;
     return next(error);
   }
@@ -76,13 +79,87 @@ const login = async (req, res, next) => {
     res.status(200).json({
       token,
       userData,
-      message: "You are now logged in",
+      message: "V-ati autentificat cu succes",
     });
   } else {
-    const error = new Error("Wrong credentials. Try again");
+    const error = new Error("Credentialele introduse sunt incorecte");
     error.code = 401;
     return next(error);
   }
 };
 
-module.exports = { newUser, login };
+// INITIALIZATION (ADD MORE IFNORMATIONS ABOUT THE USER)
+const initialization = async (req, res, next) => {
+  // throw error if user is not authenticated
+  if (!req.userData) {
+    const error = new Error("Va rog sa va autentificati inainte de a continua");
+    error.code = 401;
+    return next(error);
+  }
+  // get user data from data base
+  const { userId } = req.userData;
+  let existingUser;
+  try {
+    existingUser = await User.findById(userId);
+  } catch (err) {
+    console.log(err);
+    const error = new Error("Va rog incercati mai tarziu");
+    error.code = 500;
+    return next(error);
+  }
+  // get data from client and add it to the user profile
+  const { fullName, userPhone, accountType, accountCurrency } = req.body;
+  existingUser.fullName = fullName;
+  existingUser.userPhone = userPhone;
+  existingUser.userImage = req.file.filename;
+  existingUser.isInitialized = true;
+
+  const account = new Account({
+    accountType,
+    accountCurrency,
+    accountOwner: req.userData.userId,
+    accountDeposit: 0,
+  });
+  // save account and user profile in
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    await account.save({ session: sess });
+    existingUser.userAccounts.push(account);
+    await existingUser.save({ session: sess });
+    sess.commitTransaction();
+  } catch (err) {
+    const error = new Error("Va rog incercati mai tarziu");
+    error.code = 500;
+    return next(error);
+  }
+  return res.status(201).json({ message: "successfuly added" });
+};
+
+const getUserData = async (req, res, next) => {
+  const userId = req.params.id;
+
+  // find the user in the data base
+  let existingUser;
+  try {
+    existingUser = await User.findById(userId).select("-userPassword");
+  } catch (err) {
+    const error = new Error("Va rog incercati mai tarziu");
+    error.code = 500;
+    return next(error);
+  }
+
+  // return error if no user has been found
+  if (!existingUser) {
+    const error = new Error(
+      "Nu am gasit niciun utilizator, va rog incercatii mai tarziu"
+    );
+    error.code = 404;
+    return next(error);
+  }
+
+  // send the user data from the data base to the client
+  res.status(200).json({ userData: existingUser });
+};
+
+module.exports = { newUser, login, initialization, getUserData };

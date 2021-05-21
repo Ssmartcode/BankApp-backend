@@ -5,7 +5,9 @@ const authenticateToken = (req, res, next) => {
     const token = req.headers.authorization.split(" ")[1];
 
     if (!token) {
-      const error = new Error("You are not authorized");
+      const error = new Error(
+        "Va rog sa va autentificati inainte de a continua"
+      );
       error.code = 401;
       throw error;
     }
@@ -14,6 +16,9 @@ const authenticateToken = (req, res, next) => {
     req.userData = { userId: decodedToken.userId };
     return next();
   } catch (err) {
-    return next(err);
+    const error = new Error("Va rog sa va autentificati inainte de a continua");
+    error.code = 401;
+    next(error);
   }
 };
+module.exports = authenticateToken;
