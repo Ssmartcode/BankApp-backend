@@ -9,13 +9,13 @@ const app = express();
 
 // body-parser
 app.use(express.json({ useNewUrlParser: true }));
-
 // db connection
 const DB_STRING = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.zapps.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`;
 mongoose.connect(DB_STRING, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
+// mongoose.set("useCreateIndex", true);
 const connection = mongoose.connection;
 connection.once("connected", () => {
   console.log("You are connected to the data base");

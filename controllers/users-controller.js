@@ -7,7 +7,6 @@ const Account = require("../models/accounts");
 // ---CREATE A NEW USER---
 const newUser = async (req, res, next) => {
   const { userName, userEmail, userAge, userPassword } = req.body;
-
   // check if an user with same userName exists in the data base
   let existingUser;
   try {
@@ -35,6 +34,7 @@ const newUser = async (req, res, next) => {
   try {
     await newUser.save();
   } catch (err) {
+    console.log(err);
     const error = new Error("Contul nu a putut fi creat. Incearca mai tarziu!");
     error.code = 500;
     return next(error);
@@ -48,7 +48,7 @@ const newUser = async (req, res, next) => {
 // ---LOGIN AN EXISTING USER---
 const login = async (req, res, next) => {
   const { userName, userPassword } = req.body;
-
+  console.log(userName, userPassword);
   // check if there is an user with same userName
   let existingUser;
   try {
@@ -114,19 +114,29 @@ const initialization = async (req, res, next) => {
   existingUser.userImage = req.file.filename;
   existingUser.isInitialized = true;
 
+  // create first account for user
+  const transactionHistory = {
+    type: "created",
+    timeStamp: new Date(),
+  };
+
   const account = new Account({
     accountType,
     accountCurrency,
     accountOwner: req.userData.userId,
     accountDeposit: 0,
   });
-  // save account and user profile in
+  account.transactionsHistory.push(transactionHistory);
+
+  // save account and user profile in DB
   try {
     const sess = await mongoose.startSession();
     sess.startTransaction();
+
     await account.save({ session: sess });
     existingUser.userAccounts.push(account);
     await existingUser.save({ session: sess });
+
     sess.commitTransaction();
   } catch (err) {
     const error = new Error("Va rog incercati mai tarziu");

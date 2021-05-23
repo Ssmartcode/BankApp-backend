@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const { findByIdAndDelete } = require("../models/accounts");
 
+// utilities
+const generateIBAN = require("../utilities/generateIBAN");
+// models
 const Account = require("../models/accounts");
 const User = require("../models/users");
 
@@ -43,11 +46,22 @@ const createAccount = async (req, res, next) => {
     return next(error);
   }
 
+  // generate new IBAN
+  const accountIBAN = generateIBAN();
+
+  // add to the account history the creation date
+  const transactionsHistory = {
+    type: "created",
+    timeStamp: new Date(),
+  };
+
   // create new account
   const userAccount = new Account({
     accountType,
     accountCurrency,
     accountDeposit: 0,
+    accountIBAN,
+    transactionsHistory,
     accountOwner: req.userData.userId,
   });
 
@@ -83,6 +97,8 @@ const createAccount = async (req, res, next) => {
   });
 };
 
+// !REDUCE THE CODE BY MAKING ONE FUNCTION FOR THE PART WHERE YOU SEARCH IF THE ACCOUNT IS FOUND --------------------
+
 // DELETE
 const deleteAccount = async (req, res, next) => {
   const accountId = req.params.id;
@@ -97,14 +113,12 @@ const deleteAccount = async (req, res, next) => {
     error.code = 500;
     return next(error);
   }
-
   // if no existing account has been found -> send error
   if (!existingAccount) {
     const error = new Error("Contul dumneavoastra nu a putut fi gasit");
     error.code = 404;
     return next(error);
   }
-
   // if the action was not requested by the owner of the account
   if (existingAccount.accountOwner.toString() !== requestingUser) {
     const error = new Error("Nu aveti permisiunea sa accesati acest cont");
@@ -150,14 +164,12 @@ const deposit = async (req, res, next) => {
     error.code = 500;
     return next(error);
   }
-
   // if no existing account has been found -> send error
   if (!existingAccount) {
     const error = new Error("Contul dumneavoastra nu a putut fi gasit");
     error.code = 404;
     return next(error);
   }
-
   // if the action was not requested by the owner of the account
   if (existingAccount.accountOwner.toString() !== requestingUser) {
     const error = new Error("Nu aveti permisiunea sa accesati acest cont");
@@ -166,6 +178,12 @@ const deposit = async (req, res, next) => {
   }
 
   const { depositAmount } = req.body;
+  const transactionHistory = {
+    type: "deposit",
+    depositAmount,
+    timeStamp: new Date(),
+  };
+  existingAccount.transactionsHistory.push(transactionHistory);
   existingAccount.accountDeposit += +depositAmount;
 
   try {
@@ -194,14 +212,12 @@ const withdraw = async (req, res, next) => {
     error.code = 500;
     return next(error);
   }
-
   // if no existing account has been found -> send error
   if (!existingAccount) {
     const error = new Error("Contul dumneavoastra nu a putut fi gasit");
     error.code = 404;
     return next(error);
   }
-
   // if the action was not requested by the owner of the account
   if (existingAccount.accountOwner.toString() !== requestingUser) {
     const error = new Error("Nu aveti permisiunea sa accesati acest cont");
@@ -215,7 +231,15 @@ const withdraw = async (req, res, next) => {
     const error = new Error("Fonduri insuficiente");
     error.code = 401;
     return next(error);
-  } else existingAccount.accountDeposit -= withdrawAmount; //substract the withdrawnAmount from the accountDeposit
+  }
+
+  const transactionHistory = {
+    type: "withdraw",
+    withdrawAmount,
+    timeStamp: new Date(),
+  };
+  existingAccount.accountDeposit -= withdrawAmount; //substract the withdrawnAmount from the accountDeposit
+  existingAccount.transactionsHistory.push(transactionHistory);
 
   try {
     await existingAccount.save();
@@ -229,10 +253,93 @@ const withdraw = async (req, res, next) => {
   return res.json({ message: "Tranzactie efectuata" });
 };
 
+// TRANSFER
+const transfer = async (req, res, next) => {
+  const requestingUser = req.userData.userId;
+  const { accountId, transferAmount, destinationIBAN } = req.body;
+
+  // find the sender account
+  let senderAccount;
+  try {
+    senderAccount = await Account.findById(accountId);
+  } catch (err) {
+    const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
+    error.code = 500;
+    return next(error);
+  }
+  // if no existing account has been found -> send error
+  if (!senderAccount) {
+    const error = new Error("Contul dumneavoastra nu a putut fi gasit");
+    error.code = 404;
+    return next(error);
+  }
+  // if the action was not requested by the owner of the account
+  if (senderAccount.accountOwner.toString() !== requestingUser) {
+    const error = new Error("Nu aveti permisiunea sa accesati acest cont");
+    error.code = 401;
+    return next(error);
+  }
+
+  // find the receiver account
+  let recieverAccount;
+  try {
+    recieverAccount = await Account.findOne({
+      accountIBAN: destinationIBAN,
+    });
+  } catch (err) {
+    console.log(err);
+  }
+  // if no existing account has been found -> send error
+  if (!recieverAccount) {
+    const error = new Error("Contul destinatar nu a putut fi gasit");
+    error.code = 404;
+    return next(error);
+  }
+
+  // send error if the transfer amount exceeds the current depsoit in the senderAccount
+  if (transferAmount > senderAccount.accountDeposit) {
+    const error = new Error("Fonduri insuficiente");
+    error.code = 401;
+    return next(error);
+  }
+
+  const transactionHistory = {
+    type: "transfer",
+    transferAmount,
+    senderIBAN: senderAccount.accountIBAN,
+    destinationIBAN,
+    timeStamp: new Date(),
+  };
+  // add the amount to the reciever and retrieve it from the sender
+  // add an object to account transactionHistory proprety containng informations about transaction
+  senderAccount.accountDeposit -= +transferAmount;
+  recieverAccount.accountDeposit += +transferAmount;
+  senderAccount.transactionsHistory.push(transactionHistory);
+  recieverAccount.transactionsHistory.push(transactionHistory);
+
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+
+    transactionHistory.transferType = "send";
+    await senderAccount.save({ session: sess });
+    transactionHistory.transferType = "recieve";
+    await recieverAccount.save({ session: sess });
+
+    sess.commitTransaction();
+  } catch (err) {
+    const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
+    error.code = 500;
+    return next(error);
+  }
+  return res.json({ message: "Tranzactie efectuata" });
+};
+
 module.exports = {
   getAccountInfo,
   createAccount,
   deleteAccount,
   deposit,
   withdraw,
+  transfer,
 };
