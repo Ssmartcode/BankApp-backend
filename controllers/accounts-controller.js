@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { findByIdAndDelete } = require("../models/accounts");
-
+const convert = require("../utilities/convert");
 // utilities
 const generateIBAN = require("../utilities/generateIBAN");
 // models
@@ -97,35 +97,9 @@ const createAccount = async (req, res, next) => {
   });
 };
 
-// !REDUCE THE CODE BY MAKING ONE FUNCTION FOR THE PART WHERE YOU SEARCH IF THE ACCOUNT IS FOUND --------------------
-
 // DELETE
 const deleteAccount = async (req, res, next) => {
-  const accountId = req.params.id;
-  const requestingUser = req.userData.userId;
-
-  // find the account in the data base
-  let existingAccount;
-  try {
-    existingAccount = await Account.findById(accountId);
-  } catch (err) {
-    const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
-    error.code = 500;
-    return next(error);
-  }
-  // if no existing account has been found -> send error
-  if (!existingAccount) {
-    const error = new Error("Contul dumneavoastra nu a putut fi gasit");
-    error.code = 404;
-    return next(error);
-  }
-  // if the action was not requested by the owner of the account
-  if (existingAccount.accountOwner.toString() !== requestingUser) {
-    const error = new Error("Nu aveti permisiunea sa accesati acest cont");
-    error.code = 401;
-    return next(error);
-  }
-
+  const existingAccount = req.existingAccount;
   try {
     const sess = await mongoose.startSession();
     sess.startTransaction();
@@ -152,30 +126,7 @@ const deleteAccount = async (req, res, next) => {
 
 // DEPOSIT
 const deposit = async (req, res, next) => {
-  const accountId = req.params.id;
-  const requestingUser = req.userData.userId;
-
-  // find the account in the data base
-  let existingAccount;
-  try {
-    existingAccount = await Account.findById(accountId);
-  } catch (err) {
-    const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
-    error.code = 500;
-    return next(error);
-  }
-  // if no existing account has been found -> send error
-  if (!existingAccount) {
-    const error = new Error("Contul dumneavoastra nu a putut fi gasit");
-    error.code = 404;
-    return next(error);
-  }
-  // if the action was not requested by the owner of the account
-  if (existingAccount.accountOwner.toString() !== requestingUser) {
-    const error = new Error("Nu aveti permisiunea sa accesati acest cont");
-    error.code = 401;
-    return next(error);
-  }
+  const existingAccount = req.existingAccount;
 
   const { depositAmount } = req.body;
   const transactionHistory = {
@@ -189,8 +140,8 @@ const deposit = async (req, res, next) => {
   try {
     await existingAccount.save();
   } catch (err) {
+    console.log(err);
     const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
-    // console.log(err);
     error.code = 500;
     return next(error);
   }
@@ -200,31 +151,7 @@ const deposit = async (req, res, next) => {
 
 // WITHDRAW
 const withdraw = async (req, res, next) => {
-  const accountId = req.params.id;
-  const requestingUser = req.userData.userId;
-
-  // find the account in the data base
-  let existingAccount;
-  try {
-    existingAccount = await Account.findById(accountId);
-  } catch (err) {
-    const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
-    error.code = 500;
-    return next(error);
-  }
-  // if no existing account has been found -> send error
-  if (!existingAccount) {
-    const error = new Error("Contul dumneavoastra nu a putut fi gasit");
-    error.code = 404;
-    return next(error);
-  }
-  // if the action was not requested by the owner of the account
-  if (existingAccount.accountOwner.toString() !== requestingUser) {
-    const error = new Error("Nu aveti permisiunea sa accesati acest cont");
-    error.code = 401;
-    return next(error);
-  }
-
+  const existingAccount = req.existingAccount;
   // if withdraawAmount is greater than the account deposit
   const { withdrawAmount } = req.body;
   if (withdrawAmount > existingAccount.accountDeposit) {
@@ -255,30 +182,8 @@ const withdraw = async (req, res, next) => {
 
 // TRANSFER
 const transfer = async (req, res, next) => {
-  const requestingUser = req.userData.userId;
-  const { accountId, transferAmount, destinationIBAN } = req.body;
-
-  // find the sender account
-  let senderAccount;
-  try {
-    senderAccount = await Account.findById(accountId);
-  } catch (err) {
-    const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
-    error.code = 500;
-    return next(error);
-  }
-  // if no existing account has been found -> send error
-  if (!senderAccount) {
-    const error = new Error("Contul dumneavoastra nu a putut fi gasit");
-    error.code = 404;
-    return next(error);
-  }
-  // if the action was not requested by the owner of the account
-  if (senderAccount.accountOwner.toString() !== requestingUser) {
-    const error = new Error("Nu aveti permisiunea sa accesati acest cont");
-    error.code = 401;
-    return next(error);
-  }
+  const senderAccount = req.existingAccount;
+  let { transferAmount, destinationIBAN } = req.body;
 
   // find the receiver account
   let recieverAccount;
@@ -296,38 +201,69 @@ const transfer = async (req, res, next) => {
     return next(error);
   }
 
-  // send error if the transfer amount exceeds the current depsoit in the senderAccount
+  // send error if the transfer amount exceeds the current deposit in the senderAccount
   if (transferAmount > senderAccount.accountDeposit) {
     const error = new Error("Fonduri insuficiente");
     error.code = 401;
     return next(error);
   }
 
-  const transactionHistory = {
+  // convert the transfetAmount if the accounts' currency is different
+  const senderCurrency = senderAccount.accountCurrency;
+  const recieverCurrency = recieverAccount.accountCurrency;
+  let convertedTransferAmount = 0;
+  console.log(recieverCurrency, " ", recieverCurrency);
+  if (senderCurrency !== recieverCurrency)
+    try {
+      convertedTransferAmount = await convert(
+        +transferAmount,
+        senderCurrency,
+        recieverCurrency
+      );
+    } catch (err) {
+      const error = new Error(
+        "Ceva nu a mers bine. Va rog incercati mai tarziu"
+      );
+      console.log(err);
+      error.code = 500;
+      return next(error);
+    }
+
+  // create a record for this tranzaction and add the record to both the sender and reciever
+  const senderTransactionHistory = {
     type: "transfer",
-    transferAmount,
+    transferType: "send",
+    transferAmount: +transferAmount,
     senderIBAN: senderAccount.accountIBAN,
     destinationIBAN,
     timeStamp: new Date(),
   };
+  const recieverTransactionHistory = {
+    type: "transfer",
+    transferType: "recieve",
+    transferAmount: convertedTransferAmount || +transferAmount,
+    senderIBAN: senderAccount.accountIBAN,
+    destinationIBAN,
+    timeStamp: new Date(),
+  };
+
   // add the amount to the reciever and retrieve it from the sender
   // add an object to account transactionHistory proprety containng informations about transaction
   senderAccount.accountDeposit -= +transferAmount;
-  recieverAccount.accountDeposit += +transferAmount;
-  senderAccount.transactionsHistory.push(transactionHistory);
-  recieverAccount.transactionsHistory.push(transactionHistory);
+  recieverAccount.accountDeposit += convertedTransferAmount || +transferAmount; //add converted amount if different currency
+  senderAccount.transactionsHistory.push(senderTransactionHistory);
+  recieverAccount.transactionsHistory.push(recieverTransactionHistory);
 
   try {
     const sess = await mongoose.startSession();
     sess.startTransaction();
 
-    transactionHistory.transferType = "send";
     await senderAccount.save({ session: sess });
-    transactionHistory.transferType = "recieve";
     await recieverAccount.save({ session: sess });
 
     sess.commitTransaction();
   } catch (err) {
+    console.log(err);
     const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
     error.code = 500;
     return next(error);

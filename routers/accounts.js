@@ -16,9 +16,14 @@ router.use(require("../config/auth-jwt"));
 
 router.get("/:id", getAccountInfo);
 router.post("/", createAccount);
-router.post("/deposit/:id", deposit);
-router.post("/withdraw/:id", withdraw);
-router.post("/transfer", transfer);
-router.delete("/delete/:id", deleteAccount);
+
+// check if user account is in db
+// check if that account belongs to the user that made the transaction
+const checkUserAccount = require("../middleware/checkUserAccount");
+
+router.post("/deposit/:id", checkUserAccount, deposit);
+router.post("/withdraw/:id", checkUserAccount, withdraw);
+router.post("/transfer/:id", checkUserAccount, transfer);
+router.delete("/delete/:id", checkUserAccount, deleteAccount);
 
 module.exports = router;

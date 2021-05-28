@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const generateIBAN = require("../utilities/generateIBAN");
 // MODELS
 const User = require("../models/users");
 const Account = require("../models/accounts");
@@ -102,7 +103,6 @@ const initialization = async (req, res, next) => {
   try {
     existingUser = await User.findById(userId);
   } catch (err) {
-    console.log(err);
     const error = new Error("Va rog incercati mai tarziu");
     error.code = 500;
     return next(error);
@@ -119,12 +119,15 @@ const initialization = async (req, res, next) => {
     type: "created",
     timeStamp: new Date(),
   };
+  // generate new IBAN
+  const accountIBAN = generateIBAN();
 
   const account = new Account({
     accountType,
     accountCurrency,
-    accountOwner: req.userData.userId,
     accountDeposit: 0,
+    accountIBAN,
+    accountOwner: req.userData.userId,
   });
   account.transactionsHistory.push(transactionHistory);
 
@@ -139,6 +142,7 @@ const initialization = async (req, res, next) => {
 
     sess.commitTransaction();
   } catch (err) {
+    console.log(err);
     const error = new Error("Va rog incercati mai tarziu");
     error.code = 500;
     return next(error);
