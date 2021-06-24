@@ -7,6 +7,7 @@ const {
   withdraw,
   deleteAccount,
   transfer,
+  generateTransactionsPDF,
 } = require("../controllers/accounts-controller");
 
 const router = express.Router();
@@ -25,5 +26,6 @@ router.post("/deposit/:id", checkUserAccount, deposit);
 router.post("/withdraw/:id", checkUserAccount, withdraw);
 router.post("/transfer/:id", checkUserAccount, transfer);
 router.delete("/delete/:id", checkUserAccount, deleteAccount);
+router.get("/getTransactions/:id", generateTransactionsPDF);
 
 module.exports = router;

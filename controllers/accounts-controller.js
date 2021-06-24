@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
-const { findByIdAndDelete } = require("../models/accounts");
-const convert = require("../utilities/convert");
+
 // utilities
+const convert = require("../utilities/convert");
 const generateIBAN = require("../utilities/generateIBAN");
 // models
 const Account = require("../models/accounts");
@@ -15,6 +15,7 @@ const getAccountInfo = async (req, res, next) => {
   try {
     userAccount = await Account.findById(accountId);
   } catch (err) {
+    console.log(err);
     const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
     error.code = 500;
     return next(error);
@@ -238,6 +239,7 @@ const transfer = async (req, res, next) => {
     destinationIBAN,
     timeStamp: new Date(),
   };
+
   const recieverTransactionHistory = {
     type: "transfer",
     transferType: "recieve",
@@ -271,6 +273,14 @@ const transfer = async (req, res, next) => {
   return res.json({ message: "Tranzactie efectuata" });
 };
 
+// create a pdf with all the transactions
+const generateTransactionsPDF = async (req, res, next) => {
+  const accountId = req.params.id;
+  const account = await Account.findById(accountId).populate("accountOwner");
+  // console.log(account);
+  require("../utilities/generatePdf")(res, accountId, account);
+  res.setHeader("Content-Type", "application/pdf");
+};
 module.exports = {
   getAccountInfo,
   createAccount,
@@ -278,4 +288,5 @@ module.exports = {
   deposit,
   withdraw,
   transfer,
+  generateTransactionsPDF,
 };

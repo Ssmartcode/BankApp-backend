@@ -29,9 +29,9 @@ app.use(cors());
 app.use("/uploads/images", express.static(path.join("uploads", "images")));
 
 // routers
-const users = require("./routers/users");
+const users = require("./routes/users");
 app.use("/users", users);
-const accounts = require("./routers/accounts");
+const accounts = require("./routes/accounts");
 app.use("/accounts", accounts);
 
 // route not found
