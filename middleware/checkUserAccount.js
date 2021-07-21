@@ -2,7 +2,6 @@ const Account = require("../models/accounts");
 
 const checkUserAccount = async (req, res, next) => {
   const accountId = req.params.id;
-  console.log(accountId);
   const requestingUser = req.userData.userId;
 
   // find the account in the data base

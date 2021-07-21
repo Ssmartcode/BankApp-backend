@@ -1,5 +1,8 @@
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
+const { validationResult } = require("express-validator");
+
 const generateIBAN = require("../utilities/generateIBAN");
 // MODELS
 const User = require("../models/users");
@@ -8,6 +11,11 @@ const Account = require("../models/accounts");
 // ---CREATE A NEW USER---
 const newUser = async (req, res, next) => {
   const { userName, userEmail, userAge, userPassword } = req.body;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const err = new Error("Datele introduse nu sunt valide");
+    return next(err);
+  }
   // check if an user with same userName exists in the data base
   let existingUser;
   try {
@@ -23,15 +31,19 @@ const newUser = async (req, res, next) => {
     return next(error);
   }
 
+  // hash the password before storing it
+  const encryptedPassword = await bcrypt.hash(userPassword, 10);
+
   // get data from user and create new record in the data base
   const newUser = new User({
     userName,
     userEmail,
     userAge,
-    userPassword,
+    userPassword: encryptedPassword,
     userAccountsLimit: 5,
     isInitialized: false,
   });
+
   try {
     await newUser.save();
   } catch (err) {
@@ -49,12 +61,16 @@ const newUser = async (req, res, next) => {
 // ---LOGIN AN EXISTING USER---
 const login = async (req, res, next) => {
   const { userName, userPassword } = req.body;
-  console.log(userName, userPassword);
-  // check if there is an user with same userName
-  let existingUser;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const err = new Error("Datele introduse nu sunt valide");
+    return next(err);
+  }
+
   try {
     existingUser = await User.findOne({ userName });
   } catch (err) {
+    console.log(err);
     const error = new Error("Ceva nu a mers. Te rog incearca mai tarziu");
     error.code = 500;
     return next(error);
@@ -68,15 +84,18 @@ const login = async (req, res, next) => {
   }
 
   // in case the user exists, check if password is matching
-  if (existingUser && existingUser.userPassword === userPassword) {
-    const { id: userId, userName, isInitialized } = existingUser;
-    const userData = { userId, userName, isInitialized };
+  const matchingPassword = await bcrypt.compare(
+    userPassword,
+    existingUser.userPassword
+  );
+  if (existingUser && matchingPassword) {
+    const { _id: userId, userEmail, userName, isInitialized } = existingUser;
+    const userData = { userId, userEmail, userName, isInitialized };
 
     // create a token for the user
     const token = jwt.sign({ userId }, process.env.TOKEN_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "30m",
     });
-
     res.status(200).json({
       token,
       userData,
@@ -97,6 +116,15 @@ const initialization = async (req, res, next) => {
     error.code = 401;
     return next(error);
   }
+
+  // validation
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    console.log(errors.array());
+    const err = new Error("Datele introduse nu sunt valide");
+    return next(err);
+  }
+
   // get user data from data base
   const { userId } = req.userData;
   let existingUser;
@@ -107,6 +135,14 @@ const initialization = async (req, res, next) => {
     error.code = 500;
     return next(error);
   }
+
+  // check if image was uploaded
+  if (!req.file) {
+    const error = new Error("Va rog sa selectati o imagine!");
+    error.code = 422;
+    return next(error);
+  }
+
   // get data from client and add it to the user profile
   const { fullName, userPhone, accountType, accountCurrency } = req.body;
   existingUser.fullName = fullName;
@@ -114,7 +150,7 @@ const initialization = async (req, res, next) => {
   existingUser.userImage = req.file.filename;
   existingUser.isInitialized = true;
 
-  // create first account for user
+  // create first bank account for user
   const transactionHistory = {
     type: "created",
     timeStamp: new Date(),

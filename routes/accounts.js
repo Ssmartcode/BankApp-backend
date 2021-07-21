@@ -10,6 +10,8 @@ const {
   generateTransactionsPDF,
 } = require("../controllers/accounts-controller");
 
+// validators
+
 const router = express.Router();
 
 // token needed to acces the routes below

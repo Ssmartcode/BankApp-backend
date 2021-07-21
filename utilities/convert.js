@@ -9,7 +9,9 @@ const convert = async (amount, fromCurrency, toCurrency) => {
   }
   fx.rates = data.data.rates;
   fx.base = data.data.base;
-  return (conversion = fx(amount).from(fromCurrency).to(toCurrency));
+
+  const convertedAmount = fx(amount).from(fromCurrency).to(toCurrency);
+  return Math.round((convertedAmount + Number.EPSILON) * 100) / 100;
 };
 
 module.exports = convert;

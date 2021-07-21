@@ -23,29 +23,33 @@ const generatePDF = (res, accountId, account) => {
     .text(`IBAN: ${account.accountIBAN}`, { align: "center" });
   doc.font("Times-Roman");
   doc.moveDown();
-  account.transactionsHistory.forEach((trans) => {
-    const timeStamp = moment(new Date(trans.timeStamp)).format("DD-MM-YYYY");
-    if (trans.type === "created") {
-      doc.fillColor("green").text(`Cont creat la data de: ${timeStamp}`);
-    }
-    if (trans.type === "transfer") {
-      doc.fillColor("grey").text(`Transfer la: ${timeStamp}`);
-      doc
-        .fillColor("black")
-        .text(
-          `Suma transferata: ${trans.transferAmount} catre ${trans.destinationIBAN}`
-        );
-    }
-    if (trans.type === "withdraw") {
-      doc.fillColor("orange").text(`Retragere la: ${timeStamp}`);
-      doc.fillColor("black").text(`Suma retrasa: -${trans.withdrawAmount}`);
-    }
-    if (trans.type === "deposit") {
-      doc.fillColor("blue").text(`Depunere la: ${timeStamp}`);
-      doc.fillColor("black").text(`Suma depusa: +${trans.depositAmount}`);
-    }
-    doc.moveDown();
-  });
+  account.transactionsHistory
+    .sort((t1, t2) => {
+      return t2.timeStamp - t1.timeStamp;
+    })
+    .forEach((trans) => {
+      const timeStamp = moment(new Date(trans.timeStamp)).format("DD-MM-YYYY");
+      if (trans.type === "created") {
+        doc.fillColor("green").text(`Cont creat la data de: ${timeStamp}`);
+      }
+      if (trans.type === "transfer") {
+        doc.fillColor("grey").text(`Transfer la: ${timeStamp}`);
+        doc
+          .fillColor("black")
+          .text(
+            `Suma transferata: ${trans.transferAmount} catre ${trans.destinationIBAN}`
+          );
+      }
+      if (trans.type === "withdraw") {
+        doc.fillColor("orange").text(`Retragere la: ${timeStamp}`);
+        doc.fillColor("black").text(`Suma retrasa: -${trans.withdrawAmount}`);
+      }
+      if (trans.type === "deposit") {
+        doc.fillColor("blue").text(`Depunere la: ${timeStamp}`);
+        doc.fillColor("black").text(`Suma depusa: +${trans.depositAmount}`);
+      }
+      doc.moveDown();
+    });
   doc.pipe(res);
   doc.end();
 };

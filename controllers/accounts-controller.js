@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 // utilities
 const convert = require("../utilities/convert");
 const generateIBAN = require("../utilities/generateIBAN");
+const { validationResult } = require("express-validator");
+
 // models
 const Account = require("../models/accounts");
 const User = require("../models/users");
@@ -35,6 +37,7 @@ const getAccountInfo = async (req, res, next) => {
 // CREATE
 const createAccount = async (req, res, next) => {
   const { accountType, accountCurrency } = req.body;
+
   // get the user that made the post request
   let existingUser;
   try {
@@ -50,7 +53,7 @@ const createAccount = async (req, res, next) => {
   // generate new IBAN
   const accountIBAN = generateIBAN();
 
-  // add to the account history the creation date
+  // add the creation date to the account history
   const transactionsHistory = {
     type: "created",
     timeStamp: new Date(),
@@ -108,7 +111,6 @@ const deleteAccount = async (req, res, next) => {
     const { accountOwner } = await existingAccount
       .populate("accountOwner")
       .execPopulate();
-    // console.log(accountOwner);
     accountOwner.userAccounts.pull(accountId);
     await accountOwner.save({ session: sess });
     await existingAccount.remove({ session: sess });
@@ -128,9 +130,19 @@ const deleteAccount = async (req, res, next) => {
 // DEPOSIT
 const deposit = async (req, res, next) => {
   const existingAccount = req.existingAccount;
+  // validation
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    console.log(errors.array());
+    const err = new Error("Introduceti cel putin 0.01");
+    return next(err);
+  }
 
   const { depositAmount } = req.body;
+  if (depositAmount > 1000 && existingAccount.type === "standard")
+    console.log("error");
   const transactionHistory = {
+    currency: existingAccount.accountCurrency,
     type: "deposit",
     depositAmount,
     timeStamp: new Date(),
@@ -162,6 +174,7 @@ const withdraw = async (req, res, next) => {
   }
 
   const transactionHistory = {
+    currency: existingAccount.accountCurrency,
     type: "withdraw",
     withdrawAmount,
     timeStamp: new Date(),
@@ -173,7 +186,6 @@ const withdraw = async (req, res, next) => {
     await existingAccount.save();
   } catch (err) {
     const error = new Error("Ceva nu a mers bine. Va rog incercati mai tarziu");
-    // console.log(err);
     error.code = 500;
     return next(error);
   }
@@ -213,7 +225,6 @@ const transfer = async (req, res, next) => {
   const senderCurrency = senderAccount.accountCurrency;
   const recieverCurrency = recieverAccount.accountCurrency;
   let convertedTransferAmount = 0;
-  console.log(recieverCurrency, " ", recieverCurrency);
   if (senderCurrency !== recieverCurrency)
     try {
       convertedTransferAmount = await convert(
@@ -232,6 +243,7 @@ const transfer = async (req, res, next) => {
 
   // create a record for this tranzaction and add the record to both the sender and reciever
   const senderTransactionHistory = {
+    currency: senderCurrency,
     type: "transfer",
     transferType: "send",
     transferAmount: +transferAmount,
@@ -241,6 +253,7 @@ const transfer = async (req, res, next) => {
   };
 
   const recieverTransactionHistory = {
+    currency: recieverCurrency,
     type: "transfer",
     transferType: "recieve",
     transferAmount: convertedTransferAmount || +transferAmount,
@@ -277,7 +290,7 @@ const transfer = async (req, res, next) => {
 const generateTransactionsPDF = async (req, res, next) => {
   const accountId = req.params.id;
   const account = await Account.findById(accountId).populate("accountOwner");
-  // console.log(account);
+
   require("../utilities/generatePdf")(res, accountId, account);
   res.setHeader("Content-Type", "application/pdf");
 };
