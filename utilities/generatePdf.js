@@ -13,7 +13,7 @@ const generatePDF = (res, accountId, account) => {
   doc.font("Times-Roman");
   doc
     .fontSize(20)
-    .text(`Istoric tranzactii pentru: ${account.accountOwner.fullName}`, {
+    .text(`Transaction history for: ${account.accountOwner.fullName}`, {
       align: "center",
     });
   doc.moveDown();
@@ -30,23 +30,27 @@ const generatePDF = (res, accountId, account) => {
     .forEach((trans) => {
       const timeStamp = moment(new Date(trans.timeStamp)).format("DD-MM-YYYY");
       if (trans.type === "created") {
-        doc.fillColor("green").text(`Cont creat la data de: ${timeStamp}`);
+        doc
+          .fillColor("green")
+          .text(`Account has been created at: ${timeStamp}`);
       }
       if (trans.type === "transfer") {
-        doc.fillColor("grey").text(`Transfer la: ${timeStamp}`);
+        doc.fillColor("grey").text(`Transfer at: ${timeStamp}`);
         doc
           .fillColor("black")
           .text(
-            `Suma transferata: ${trans.transferAmount} catre ${trans.destinationIBAN}`
+            `Transferred amount: ${trans.transferAmount} catre ${trans.destinationIBAN}`
           );
       }
       if (trans.type === "withdraw") {
-        doc.fillColor("orange").text(`Retragere la: ${timeStamp}`);
-        doc.fillColor("black").text(`Suma retrasa: -${trans.withdrawAmount}`);
+        doc.fillColor("orange").text(`Withdraw at: ${timeStamp}`);
+        doc
+          .fillColor("black")
+          .text(`Withdraw amount: -${trans.withdrawAmount}`);
       }
       if (trans.type === "deposit") {
-        doc.fillColor("blue").text(`Depunere la: ${timeStamp}`);
-        doc.fillColor("black").text(`Suma depusa: +${trans.depositAmount}`);
+        doc.fillColor("blue").text(`Deposit at: ${timeStamp}`);
+        doc.fillColor("black").text(`Deposit amount: +${trans.depositAmount}`);
       }
       doc.moveDown();
     });
